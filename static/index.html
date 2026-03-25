@@ -24,9 +24,17 @@
       transform: translateY(-2px);
     }
 
-    .pulse-dot {
-      animation: pulse 2s infinite;
+    .disease-card-glow {
+      box-shadow: 0 0 20px rgba(168, 85, 247, 0.15);
+      transition: box-shadow 0.3s ease, transform 0.3s ease;
     }
+
+    .disease-card-glow:hover {
+      box-shadow: 0 0 35px rgba(168, 85, 247, 0.35);
+      transform: translateY(-2px);
+    }
+
+    .pulse-dot { animation: pulse 2s infinite; }
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
@@ -42,9 +50,7 @@
       animation: spin 0.8s linear infinite;
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     .result-card {
       animation: fadeInUp 0.4s ease forwards;
@@ -60,6 +66,10 @@
       outline: none;
       box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5);
     }
+
+    .bar-fill {
+      transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    }
   </style>
 </head>
 <body class="gradient-bg min-h-screen text-white">
@@ -71,7 +81,7 @@
         <span class="text-2xl">🧬</span>
         <div>
           <h1 class="text-xl font-bold tracking-tight">PhenoSynth</h1>
-          <p class="text-xs text-indigo-300 font-medium">Rare Disease Symptom Analyzer</p>
+          <p class="text-xs text-indigo-300 font-medium">Rare Disease Differential Diagnosis</p>
         </div>
       </div>
       <div class="flex items-center gap-2 text-xs text-white/50">
@@ -87,11 +97,11 @@
     <!-- Hero -->
     <div class="text-center mb-12">
       <h2 class="text-4xl font-bold mb-4 bg-gradient-to-r from-indigo-300 to-purple-300 bg-clip-text text-transparent">
-        Describe Symptoms. Get HPO Terms.
+        Describe Symptoms. Find Diseases.
       </h2>
       <p class="text-white/60 text-lg max-w-2xl mx-auto leading-relaxed">
-        Enter a clinical note or patient symptom description below. PhenoSynth will extract
-        standardized phenotype terms from the Human Phenotype Ontology (HPO).
+        Enter a clinical note or symptom description. PhenoSynth extracts HPO phenotype terms
+        and ranks the most likely rare diseases by symptom overlap.
       </p>
     </div>
 
@@ -103,11 +113,10 @@
       <textarea
         id="symptom-input"
         rows="5"
-        placeholder="Example: Patient presents with muscle weakness, elevated creatine kinase, seizures, and mild intellectual disability..."
+        placeholder="Example: Patient presents with progressive muscle weakness, elevated creatine kinase, cardiomyopathy, and scoliosis..."
         class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 resize-none text-sm leading-relaxed transition-all"
       ></textarea>
 
-      <!-- Example buttons -->
       <div class="flex flex-wrap gap-2 mt-3 mb-5">
         <span class="text-xs text-white/40 self-center">Try an example:</span>
         <button onclick="loadExample(0)" class="text-xs bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-300 px-3 py-1 rounded-full transition-colors">
@@ -139,8 +148,8 @@
       <span id="error-text"></span>
     </div>
 
-    <!-- Results section -->
-    <div id="results-section" class="hidden">
+    <!-- HPO Results -->
+    <div id="results-section" class="hidden mb-10">
       <div class="flex items-center justify-between mb-5">
         <h3 class="text-lg font-semibold text-white">
           Matched HPO Terms
@@ -150,34 +159,59 @@
           Clear
         </button>
       </div>
-
       <div id="results-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
-
-      <!-- Empty state -->
       <div id="no-results" class="hidden text-center py-12">
         <span class="text-5xl mb-4 block">🔍</span>
         <p class="text-white/50">No HPO terms matched. Try a more detailed symptom description.</p>
       </div>
     </div>
 
+    <!-- Disease Results -->
+    <div id="disease-section" class="hidden">
+      <div class="flex items-center justify-between mb-5">
+        <h3 class="text-lg font-semibold text-white">
+          Ranked Disease Matches
+          <span id="disease-count" class="ml-2 text-sm font-normal text-purple-300"></span>
+        </h3>
+      </div>
+
+      <div class="bg-white/3 border border-white/10 rounded-xl px-5 py-3 mb-5 text-xs text-white/40 leading-relaxed">
+        Diseases are ranked by how specifically their known symptom profiles match yours.
+        Rarer, more specific symptom matches score higher than common ones.
+        This is a research tool and does not constitute medical advice.
+      </div>
+
+      <div id="disease-list" class="flex flex-col gap-4"></div>
+
+      <div id="no-diseases" class="hidden text-center py-12">
+        <span class="text-5xl mb-4 block">🏥</span>
+        <p class="text-white/50">No disease matches found. Try adding more specific symptoms.</p>
+      </div>
+    </div>
+
     <!-- How it works -->
     <div class="mt-16 border-t border-white/10 pt-12">
       <h3 class="text-center text-sm font-semibold uppercase tracking-widest text-white/40 mb-8">How It Works</h3>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-6">
         <div class="text-center">
           <div class="text-3xl mb-3">📝</div>
-          <h4 class="font-semibold text-sm mb-2">1. You Describe</h4>
-          <p class="text-xs text-white/50 leading-relaxed">Type any clinical notes or symptom description in plain English</p>
+          <h4 class="font-semibold text-sm mb-2">1. Describe</h4>
+          <p class="text-xs text-white/50 leading-relaxed">Type symptoms in plain English</p>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl mb-3">🔬</div>
+          <h4 class="font-semibold text-sm mb-2">2. Extract</h4>
+          <p class="text-xs text-white/50 leading-relaxed">SciSpaCy reads the text and identifies medical concepts</p>
         </div>
         <div class="text-center">
           <div class="text-3xl mb-3">🔗</div>
-          <h4 class="font-semibold text-sm mb-2">2. We Map</h4>
-          <p class="text-xs text-white/50 leading-relaxed">PhenoSynth maps your words to standardized HPO terms used by clinicians worldwide</p>
+          <h4 class="font-semibold text-sm mb-2">3. Map to HPO</h4>
+          <p class="text-xs text-white/50 leading-relaxed">Concepts are matched to standard HPO codes used worldwide</p>
         </div>
         <div class="text-center">
           <div class="text-3xl mb-3">🎯</div>
-          <h4 class="font-semibold text-sm mb-2">3. You Get Phenotypes</h4>
-          <p class="text-xs text-white/50 leading-relaxed">Structured HPO IDs ready for disease matching, research, or clinical documentation</p>
+          <h4 class="font-semibold text-sm mb-2">4. Rank Diseases</h4>
+          <p class="text-xs text-white/50 leading-relaxed">12,500+ diseases scored by symptom overlap</p>
         </div>
       </div>
     </div>
@@ -186,13 +220,10 @@
 
   <!-- Footer -->
   <footer class="text-center py-8 text-xs text-white/20 border-t border-white/5">
-    PhenoSynth v0.1.0 &nbsp;|&nbsp; Research tool only. Not for clinical use.
+    PhenoSynth v0.2.0 &nbsp;|&nbsp; Research tool only. Not for clinical use.
   </footer>
 
   <script>
-    // ---------------------------------------------------------------------------
-    // Example symptom descriptions
-    // ---------------------------------------------------------------------------
     const EXAMPLES = [
       "Patient presents with progressive muscle weakness, elevated creatine kinase, cardiomyopathy, and scoliosis. Family history of similar presentation in maternal uncle.",
       "6-year-old with hepatomegaly, splenomegaly, jaundice, and failure to thrive. Laboratory findings show elevated liver enzymes and proteinuria.",
@@ -204,32 +235,20 @@
       updateCharCount();
     }
 
-    // ---------------------------------------------------------------------------
-    // Character counter
-    // ---------------------------------------------------------------------------
     document.getElementById('symptom-input').addEventListener('input', updateCharCount);
 
     function updateCharCount() {
       const len = document.getElementById('symptom-input').value.length;
       const el = document.getElementById('char-count');
       el.textContent = `${len} / 5000 characters`;
-      el.className = len > 4500
-        ? 'text-xs text-red-400'
-        : len > 3000
-          ? 'text-xs text-yellow-400'
-          : 'text-xs text-white/30';
+      el.className = len > 4500 ? 'text-xs text-red-400' : len > 3000 ? 'text-xs text-yellow-400' : 'text-xs text-white/30';
     }
 
-    // ---------------------------------------------------------------------------
-    // Health check on load
-    // ---------------------------------------------------------------------------
     async function checkHealth() {
       try {
         const res = await fetch('/health');
         const data = await res.json();
-        if (data.status === 'ok') {
-          document.getElementById('server-status').textContent = 'Server ready';
-        }
+        if (data.status === 'ok') document.getElementById('server-status').textContent = 'Server ready';
       } catch {
         document.getElementById('server-status').textContent = 'Server offline';
       }
@@ -237,18 +256,10 @@
 
     window.addEventListener('load', checkHealth);
 
-    // ---------------------------------------------------------------------------
-    // Main analyze function
-    // ---------------------------------------------------------------------------
     async function analyzeSymptoms() {
       const text = document.getElementById('symptom-input').value.trim();
+      if (!text) { showError('Please enter a symptom description before analyzing.'); return; }
 
-      if (!text) {
-        showError('Please enter a symptom description before analyzing.');
-        return;
-      }
-
-      // UI: loading state
       setLoading(true);
       hideError();
       hideResults();
@@ -266,7 +277,8 @@
         }
 
         const data = await response.json();
-        renderResults(data);
+        renderPhenotypes(data);
+        renderDiseases(data);
 
       } catch (err) {
         showError(err.message || 'Something went wrong. Is the server running?');
@@ -275,10 +287,8 @@
       }
     }
 
-    // ---------------------------------------------------------------------------
-    // Render result cards
-    // ---------------------------------------------------------------------------
-    function renderResults(data) {
+    // Render HPO term cards
+    function renderPhenotypes(data) {
       const section = document.getElementById('results-section');
       const grid = document.getElementById('results-grid');
       const noResults = document.getElementById('no-results');
@@ -287,62 +297,115 @@
       grid.innerHTML = '';
       section.classList.remove('hidden');
 
-      if (data.phenotypes.length === 0) {
+      const n = data.total_phenotype_matches;
+
+      if (!data.phenotypes || data.phenotypes.length === 0) {
         noResults.classList.remove('hidden');
         count.textContent = '';
         return;
       }
 
       noResults.classList.add('hidden');
-      count.textContent = `${data.total_matches} term${data.total_matches !== 1 ? 's' : ''} found`;
+      count.textContent = `${n} term${n !== 1 ? 's' : ''} found`;
 
       data.phenotypes.forEach((p, i) => {
-        const delay = i * 80;
-        const confidencePct = Math.round(p.confidence * 100);
         const card = document.createElement('div');
         card.className = 'result-card bg-white/5 border border-white/10 rounded-xl p-5 card-glow';
-        card.style.animationDelay = `${delay}ms`;
+        card.style.animationDelay = `${i * 80}ms`;
         card.innerHTML = `
           <div class="flex items-start justify-between mb-3">
             <span class="text-xs font-mono bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded-md">${p.hpo_id}</span>
-            <span class="text-xs text-white/30">${confidencePct}% match</span>
+            <span class="text-xs text-white/30">${Math.round(p.confidence * 100)}% confidence</span>
           </div>
           <h4 class="font-semibold text-white text-sm mb-2">${p.label}</h4>
           <p class="text-xs text-white/40">
-            Matched phrase: <span class="text-white/60 italic">"${p.matched_phrase}"</span>
+            Matched: <span class="text-white/60 italic">"${p.matched_phrase}"</span>
           </p>
         `;
         grid.appendChild(card);
       });
     }
 
-    // ---------------------------------------------------------------------------
-    // UI helpers
-    // ---------------------------------------------------------------------------
+    // Render disease match cards with score bars
+    function renderDiseases(data) {
+      const section = document.getElementById('disease-section');
+      const list = document.getElementById('disease-list');
+      const noDiseases = document.getElementById('no-diseases');
+      const count = document.getElementById('disease-count');
+
+      list.innerHTML = '';
+      section.classList.remove('hidden');
+
+      if (!data.diseases || data.diseases.length === 0) {
+        noDiseases.classList.remove('hidden');
+        count.textContent = '';
+        return;
+      }
+
+      noDiseases.classList.add('hidden');
+      count.textContent = `Top ${data.diseases.length} matches`;
+
+      const topScore = data.diseases[0].match_percent;
+
+      data.diseases.forEach((d, i) => {
+        const rankColors = ['text-yellow-300', 'text-slate-300', 'text-amber-600', 'text-white/50', 'text-white/50'];
+        const rankColor = rankColors[i] || 'text-white/40';
+        const barWidth = topScore > 0 ? (d.match_percent / topScore) * 100 : 0;
+        const coveragePct = Math.round(d.coverage * 100);
+
+        const card = document.createElement('div');
+        card.className = 'result-card bg-white/5 border border-white/10 rounded-xl p-5 disease-card-glow';
+        card.style.animationDelay = `${i * 100}ms`;
+        card.innerHTML = `
+          <div class="flex items-start justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <span class="text-lg font-bold ${rankColor}">#${i + 1}</span>
+              <div>
+                <h4 class="font-semibold text-white text-sm leading-tight">${d.disease_name}</h4>
+                <span class="text-xs text-white/40 font-mono">${d.disease_id}</span>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="text-lg font-bold text-purple-300">${d.match_percent}%</span>
+              <p class="text-xs text-white/30">match score</p>
+            </div>
+          </div>
+
+          <!-- Score bar -->
+          <div class="w-full bg-white/10 rounded-full h-1.5 mb-3">
+            <div class="bar-fill bg-gradient-to-r from-indigo-500 to-purple-500 h-1.5 rounded-full" style="width: ${barWidth}%"></div>
+          </div>
+
+          <div class="flex items-center gap-4 text-xs text-white/40">
+            <span>${d.matched_terms.length} of ${d.total_disease_terms} known symptoms matched</span>
+            <span class="text-white/20">|</span>
+            <span>${coveragePct}% of your symptoms covered</span>
+          </div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
     function setLoading(loading) {
       const btn = document.getElementById('analyze-btn');
-      const text = document.getElementById('btn-text');
-      const spinner = document.getElementById('btn-spinner');
       btn.disabled = loading;
       btn.className = loading
         ? 'bg-indigo-600/50 cursor-not-allowed text-white font-semibold px-8 py-3 rounded-xl transition-all text-sm flex items-center gap-2'
         : 'bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl transition-all text-sm flex items-center gap-2';
-      text.textContent = loading ? 'Analyzing...' : 'Analyze Symptoms';
-      spinner.classList.toggle('hidden', !loading);
+      document.getElementById('btn-text').textContent = loading ? 'Analyzing...' : 'Analyze Symptoms';
+      document.getElementById('btn-spinner').classList.toggle('hidden', !loading);
     }
 
     function showError(msg) {
-      const banner = document.getElementById('error-banner');
       document.getElementById('error-text').textContent = msg;
-      banner.classList.remove('hidden');
+      document.getElementById('error-banner').classList.remove('hidden');
     }
 
-    function hideError() {
-      document.getElementById('error-banner').classList.add('hidden');
-    }
+    function hideError() { document.getElementById('error-banner').classList.add('hidden'); }
 
     function hideResults() {
       document.getElementById('results-section').classList.add('hidden');
+      document.getElementById('disease-section').classList.add('hidden');
     }
 
     function clearResults() {
@@ -351,11 +414,8 @@
       updateCharCount();
     }
 
-    // Allow Ctrl+Enter to submit
     document.getElementById('symptom-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-        analyzeSymptoms();
-      }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) analyzeSymptoms();
     });
   </script>
 

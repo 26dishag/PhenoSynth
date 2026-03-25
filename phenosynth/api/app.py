@@ -2,8 +2,8 @@
 PhenoSynth API server.
 
 Serves the web UI and exposes the /analyze endpoint.
-The /analyze endpoint accepts a plain-text symptom description
-and returns a list of matched HPO phenotype terms.
+The /analyze endpoint accepts a plain-text symptom description,
+extracts HPO phenotype terms, and returns ranked disease matches.
 
 Run with:
     uvicorn phenosynth.api.app:app --reload
@@ -19,6 +19,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from phenosynth.nlp.extractor import SymptomExtractor, ExtractionResult
+from phenosynth.graph.disease_loader import load_disease_index
+from phenosynth.graph.disease_scorer import DiseaseScorer
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -27,7 +29,7 @@ from phenosynth.nlp.extractor import SymptomExtractor, ExtractionResult
 app = FastAPI(
     title="PhenoSynth",
     description="AI-powered rare disease differential diagnosis via HPO graph reasoning.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 # Serve static files (HTML, CSS, JS) from the top-level /static directory
@@ -35,8 +37,10 @@ STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# Single shared extractor instance (loaded once at startup)
+# Load all components once at startup
 _extractor = SymptomExtractor()
+_disease_index = load_disease_index()
+_scorer = DiseaseScorer(_disease_index)
 
 
 # ---------------------------------------------------------------------------
@@ -54,16 +58,27 @@ class AnalyzeRequest(BaseModel):
 
 
 class PhenotypeMatch(BaseModel):
-    hpo_id: str = Field(description="HPO term identifier, e.g. HP:0003326")
-    label: str = Field(description="Human-readable HPO term label")
-    matched_phrase: str = Field(description="The phrase in the input text that triggered this match")
-    confidence: float = Field(description="Confidence score between 0 and 1")
+    hpo_id: str
+    label: str
+    matched_phrase: str
+    confidence: float
+
+
+class DiseaseResult(BaseModel):
+    disease_id: str
+    disease_name: str
+    match_percent: float
+    matched_terms: list[str]
+    total_disease_terms: int
+    coverage: float
 
 
 class AnalyzeResponse(BaseModel):
     input_text: str
     phenotypes: list[PhenotypeMatch]
-    total_matches: int
+    diseases: list[DiseaseResult]
+    total_phenotype_matches: int
+    total_disease_matches: int
 
 
 # ---------------------------------------------------------------------------
@@ -85,16 +100,16 @@ async def serve_ui():
 @app.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_symptoms(request: AnalyzeRequest):
     """
-    Analyze a free-text symptom description and return matched HPO phenotypes.
-
-    - Normalizes the input text
-    - Scans for known HPO symptom phrases (Phase 1: dictionary-based)
-    - Returns deduplicated matches sorted by HPO ID
+    Full analysis pipeline:
+    1. Extract HPO phenotype terms from free text using SciSpaCy
+    2. Score all diseases against the extracted HPO terms
+    3. Return ranked phenotypes and ranked disease matches
     """
     if not request.text.strip():
         raise HTTPException(status_code=422, detail="Input text cannot be empty or whitespace.")
 
-    result: ExtractionResult = _extractor.extract(request.text)
+    # Step 1: extract HPO terms
+    extraction: ExtractionResult = _extractor.extract(request.text)
 
     phenotypes = [
         PhenotypeMatch(
@@ -103,17 +118,35 @@ async def analyze_symptoms(request: AnalyzeRequest):
             matched_phrase=p.matched_phrase,
             confidence=p.confidence,
         )
-        for p in result.phenotypes
+        for p in extraction.phenotypes
+    ]
+
+    # Step 2: score diseases
+    hpo_ids = [p.hpo_id for p in extraction.phenotypes]
+    scoring = _scorer.score(hpo_ids, top_n=10)
+
+    diseases = [
+        DiseaseResult(
+            disease_id=m.disease_id,
+            disease_name=m.disease_name,
+            match_percent=m.match_percent,
+            matched_terms=m.matched_terms,
+            total_disease_terms=m.total_disease_terms,
+            coverage=m.coverage,
+        )
+        for m in scoring.matches
     ]
 
     return AnalyzeResponse(
         input_text=request.text,
         phenotypes=phenotypes,
-        total_matches=len(phenotypes),
+        diseases=diseases,
+        total_phenotype_matches=len(phenotypes),
+        total_disease_matches=len(diseases),
     )
 
 
 @app.get("/health")
 async def health_check():
     """Simple health check endpoint."""
-    return JSONResponse({"status": "ok", "version": "0.1.0"})
+    return JSONResponse({"status": "ok", "version": "0.2.0"})
