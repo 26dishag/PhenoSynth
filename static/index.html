@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhenoSynth | Rare Disease Symptom Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    * { font-family: 'Inter', sans-serif; }
+
+    .gradient-bg {
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+    }
+
+    .card-glow {
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
+      transition: box-shadow 0.3s ease, transform 0.3s ease;
+    }
+
+    .card-glow:hover {
+      box-shadow: 0 0 35px rgba(99, 102, 241, 0.35);
+      transform: translateY(-2px);
+    }
+
+    .pulse-dot {
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .spinner {
+      border: 3px solid rgba(99, 102, 241, 0.2);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .result-card {
+      animation: fadeInUp 0.4s ease forwards;
+      opacity: 0;
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    textarea:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5);
+    }
+  </style>
+</head>
+<body class="gradient-bg min-h-screen text-white">
+
+  <!-- Header -->
+  <header class="border-b border-white/10 px-6 py-4">
+    <div class="max-w-4xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">🧬</span>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight">PhenoSynth</h1>
+          <p class="text-xs text-indigo-300 font-medium">Rare Disease Symptom Analyzer</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-white/50">
+        <span class="pulse-dot w-2 h-2 rounded-full bg-green-400 inline-block"></span>
+        <span id="server-status">Connecting...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main class="max-w-4xl mx-auto px-6 py-12">
+
+    <!-- Hero -->
+    <div class="text-center mb-12">
+      <h2 class="text-4xl font-bold mb-4 bg-gradient-to-r from-indigo-300 to-purple-300 bg-clip-text text-transparent">
+        Describe Symptoms. Get HPO Terms.
+      </h2>
+      <p class="text-white/60 text-lg max-w-2xl mx-auto leading-relaxed">
+        Enter a clinical note or patient symptom description below. PhenoSynth will extract
+        standardized phenotype terms from the Human Phenotype Ontology (HPO).
+      </p>
+    </div>
+
+    <!-- Input card -->
+    <div class="bg-white/5 border border-white/10 rounded-2xl p-6 mb-8 card-glow">
+      <label class="block text-sm font-semibold text-indigo-300 mb-3 uppercase tracking-wider">
+        Symptom Description
+      </label>
+      <textarea
+        id="symptom-input"
+        rows="5"
+        placeholder="Example: Patient presents with muscle weakness, elevated creatine kinase, seizures, and mild intellectual disability..."
+        class="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 resize-none text-sm leading-relaxed transition-all"
+      ></textarea>
+
+      <!-- Example buttons -->
+      <div class="flex flex-wrap gap-2 mt-3 mb-5">
+        <span class="text-xs text-white/40 self-center">Try an example:</span>
+        <button onclick="loadExample(0)" class="text-xs bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-300 px-3 py-1 rounded-full transition-colors">
+          Muscular dystrophy
+        </button>
+        <button onclick="loadExample(1)" class="text-xs bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-300 px-3 py-1 rounded-full transition-colors">
+          Metabolic disorder
+        </button>
+        <button onclick="loadExample(2)" class="text-xs bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-300 px-3 py-1 rounded-full transition-colors">
+          Neurological
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <span id="char-count" class="text-xs text-white/30">0 / 5000 characters</span>
+        <button
+          id="analyze-btn"
+          onclick="analyzeSymptoms()"
+          class="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl transition-all text-sm flex items-center gap-2"
+        >
+          <span id="btn-text">Analyze Symptoms</span>
+          <span id="btn-spinner" class="spinner hidden"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Error banner -->
+    <div id="error-banner" class="hidden bg-red-500/10 border border-red-500/30 rounded-xl px-5 py-4 mb-8 text-red-300 text-sm">
+      <span id="error-text"></span>
+    </div>
+
+    <!-- Results section -->
+    <div id="results-section" class="hidden">
+      <div class="flex items-center justify-between mb-5">
+        <h3 class="text-lg font-semibold text-white">
+          Matched HPO Terms
+          <span id="result-count" class="ml-2 text-sm font-normal text-indigo-300"></span>
+        </h3>
+        <button onclick="clearResults()" class="text-xs text-white/40 hover:text-white/70 transition-colors">
+          Clear
+        </button>
+      </div>
+
+      <div id="results-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+
+      <!-- Empty state -->
+      <div id="no-results" class="hidden text-center py-12">
+        <span class="text-5xl mb-4 block">🔍</span>
+        <p class="text-white/50">No HPO terms matched. Try a more detailed symptom description.</p>
+      </div>
+    </div>
+
+    <!-- How it works -->
+    <div class="mt-16 border-t border-white/10 pt-12">
+      <h3 class="text-center text-sm font-semibold uppercase tracking-widest text-white/40 mb-8">How It Works</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <div class="text-center">
+          <div class="text-3xl mb-3">📝</div>
+          <h4 class="font-semibold text-sm mb-2">1. You Describe</h4>
+          <p class="text-xs text-white/50 leading-relaxed">Type any clinical notes or symptom description in plain English</p>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl mb-3">🔗</div>
+          <h4 class="font-semibold text-sm mb-2">2. We Map</h4>
+          <p class="text-xs text-white/50 leading-relaxed">PhenoSynth maps your words to standardized HPO terms used by clinicians worldwide</p>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl mb-3">🎯</div>
+          <h4 class="font-semibold text-sm mb-2">3. You Get Phenotypes</h4>
+          <p class="text-xs text-white/50 leading-relaxed">Structured HPO IDs ready for disease matching, research, or clinical documentation</p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="text-center py-8 text-xs text-white/20 border-t border-white/5">
+    PhenoSynth v0.1.0 &nbsp;|&nbsp; Research tool only. Not for clinical use.
+  </footer>
+
+  <script>
+    // ---------------------------------------------------------------------------
+    // Example symptom descriptions
+    // ---------------------------------------------------------------------------
+    const EXAMPLES = [
+      "Patient presents with progressive muscle weakness, elevated creatine kinase, cardiomyopathy, and scoliosis. Family history of similar presentation in maternal uncle.",
+      "6-year-old with hepatomegaly, splenomegaly, jaundice, and failure to thrive. Laboratory findings show elevated liver enzymes and proteinuria.",
+      "Adult patient with ataxia, nystagmus, tremor, and dystonia. Cognitive impairment noted. MRI shows cerebellar atrophy.",
+    ];
+
+    function loadExample(index) {
+      document.getElementById('symptom-input').value = EXAMPLES[index];
+      updateCharCount();
+    }
+
+    // ---------------------------------------------------------------------------
+    // Character counter
+    // ---------------------------------------------------------------------------
+    document.getElementById('symptom-input').addEventListener('input', updateCharCount);
+
+    function updateCharCount() {
+      const len = document.getElementById('symptom-input').value.length;
+      const el = document.getElementById('char-count');
+      el.textContent = `${len} / 5000 characters`;
+      el.className = len > 4500
+        ? 'text-xs text-red-400'
+        : len > 3000
+          ? 'text-xs text-yellow-400'
+          : 'text-xs text-white/30';
+    }
+
+    // ---------------------------------------------------------------------------
+    // Health check on load
+    // ---------------------------------------------------------------------------
+    async function checkHealth() {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        if (data.status === 'ok') {
+          document.getElementById('server-status').textContent = 'Server ready';
+        }
+      } catch {
+        document.getElementById('server-status').textContent = 'Server offline';
+      }
+    }
+
+    window.addEventListener('load', checkHealth);
+
+    // ---------------------------------------------------------------------------
+    // Main analyze function
+    // ---------------------------------------------------------------------------
+    async function analyzeSymptoms() {
+      const text = document.getElementById('symptom-input').value.trim();
+
+      if (!text) {
+        showError('Please enter a symptom description before analyzing.');
+        return;
+      }
+
+      // UI: loading state
+      setLoading(true);
+      hideError();
+      hideResults();
+
+      try {
+        const response = await fetch('/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.detail || `Server error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        renderResults(data);
+
+      } catch (err) {
+        showError(err.message || 'Something went wrong. Is the server running?');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Render result cards
+    // ---------------------------------------------------------------------------
+    function renderResults(data) {
+      const section = document.getElementById('results-section');
+      const grid = document.getElementById('results-grid');
+      const noResults = document.getElementById('no-results');
+      const count = document.getElementById('result-count');
+
+      grid.innerHTML = '';
+      section.classList.remove('hidden');
+
+      if (data.phenotypes.length === 0) {
+        noResults.classList.remove('hidden');
+        count.textContent = '';
+        return;
+      }
+
+      noResults.classList.add('hidden');
+      count.textContent = `${data.total_matches} term${data.total_matches !== 1 ? 's' : ''} found`;
+
+      data.phenotypes.forEach((p, i) => {
+        const delay = i * 80;
+        const confidencePct = Math.round(p.confidence * 100);
+        const card = document.createElement('div');
+        card.className = 'result-card bg-white/5 border border-white/10 rounded-xl p-5 card-glow';
+        card.style.animationDelay = `${delay}ms`;
+        card.innerHTML = `
+          <div class="flex items-start justify-between mb-3">
+            <span class="text-xs font-mono bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded-md">${p.hpo_id}</span>
+            <span class="text-xs text-white/30">${confidencePct}% match</span>
+          </div>
+          <h4 class="font-semibold text-white text-sm mb-2">${p.label}</h4>
+          <p class="text-xs text-white/40">
+            Matched phrase: <span class="text-white/60 italic">"${p.matched_phrase}"</span>
+          </p>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    // ---------------------------------------------------------------------------
+    // UI helpers
+    // ---------------------------------------------------------------------------
+    function setLoading(loading) {
+      const btn = document.getElementById('analyze-btn');
+      const text = document.getElementById('btn-text');
+      const spinner = document.getElementById('btn-spinner');
+      btn.disabled = loading;
+      btn.className = loading
+        ? 'bg-indigo-600/50 cursor-not-allowed text-white font-semibold px-8 py-3 rounded-xl transition-all text-sm flex items-center gap-2'
+        : 'bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-semibold px-8 py-3 rounded-xl transition-all text-sm flex items-center gap-2';
+      text.textContent = loading ? 'Analyzing...' : 'Analyze Symptoms';
+      spinner.classList.toggle('hidden', !loading);
+    }
+
+    function showError(msg) {
+      const banner = document.getElementById('error-banner');
+      document.getElementById('error-text').textContent = msg;
+      banner.classList.remove('hidden');
+    }
+
+    function hideError() {
+      document.getElementById('error-banner').classList.add('hidden');
+    }
+
+    function hideResults() {
+      document.getElementById('results-section').classList.add('hidden');
+    }
+
+    function clearResults() {
+      hideResults();
+      document.getElementById('symptom-input').value = '';
+      updateCharCount();
+    }
+
+    // Allow Ctrl+Enter to submit
+    document.getElementById('symptom-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        analyzeSymptoms();
+      }
+    });
+  </script>
+
+</body>
+</html>
